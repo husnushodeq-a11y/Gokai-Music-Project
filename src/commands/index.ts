@@ -1,6 +1,8 @@
 import type { Command, GokaiClient } from '@/types';
 import { HelpCommand } from '@/commands/help/HelpCommand';
 import { PlayCommand } from '@/commands/music/PlayCommand';
+import { CONTROL_COMMANDS } from '@/commands/music/ControlCommands';
+import { QueueCommand } from '@/commands/queue/QueueCommand';
 
 /**
  * Command registry.
@@ -15,7 +17,9 @@ import { PlayCommand } from '@/commands/music/PlayCommand';
 export const ALL_COMMANDS: readonly Command[] = [
   HelpCommand,
   PlayCommand,
-  // Further Phase 3+ commands (queue, sessions, settings, …) are added here.
+  QueueCommand,
+  ...CONTROL_COMMANDS,
+  // Further Phase 3+ commands (sessions, collections, settings, …) are added here.
 ];
 
 /** Populate `client.commands` with names + aliases, guarding against clashes. */

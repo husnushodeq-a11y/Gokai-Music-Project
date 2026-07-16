@@ -1,12 +1,9 @@
-import {
-  PermissionFlagsBits,
-  type GuildMember,
-  type Message,
-} from 'discord.js';
+import { type GuildMember, type Message } from 'discord.js';
 import { prisma } from '@/lib/prisma';
 import { config } from '@/config';
-import { resolvePrefix, getGuildSettings } from '@/core/SettingsService';
+import { resolvePrefix } from '@/core/SettingsService';
 import { isBlacklisted } from '@/core/BlacklistService';
+import { isDj } from '@/util/permissions';
 import type { Command, CommandContext, GokaiClient } from '@/types';
 
 /**
@@ -162,33 +159,11 @@ async function checkRequirements(
     }
   }
 
-  if (req.djOnly && !(await passesDjCheck(member, client, message.guildId))) {
+  if (req.djOnly && !(await isDj(member, client))) {
     return '🎧 Only DJs can use that command.';
   }
 
   return null;
-}
-
-/** DJ gate: bot owner, session owner, DJ-role holder, or Manage Server. */
-async function passesDjCheck(
-  member: GuildMember,
-  client: GokaiClient,
-  guildId: string,
-): Promise<boolean> {
-  if (config.ownerIds.includes(member.id)) return true;
-
-  const session = client.sessions.get(guildId);
-  if (session?.ownerId === member.id) return true;
-
-  const settings = await getGuildSettings(guildId);
-  if (settings.djRoleId && member.roles.cache.has(settings.djRoleId)) return true;
-
-  // Fall back to a moderator-level permission when no DJ role is configured.
-  if (!settings.djRoleId && member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-    return true;
-  }
-
-  return false;
 }
 
 /** Reply without ever throwing (missing perms, deleted message, …). */

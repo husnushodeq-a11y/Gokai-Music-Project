@@ -32,3 +32,47 @@ export function truncate(input: string, max: number): string {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+
+/**
+ * Parse a human time expression into **milliseconds**, or null if unparseable.
+ *
+ * Accepts:
+ *   - Colon notation:  "90" → 90s, "1:30" → 90s, "1:02:03" → 1h2m3s
+ *   - Unit notation:   "90s", "2m", "1h30m", "1h2m3s"
+ */
+export function parseTimeToMs(input: string): number | null {
+  const trimmed = input.trim().toLowerCase();
+  if (trimmed.length === 0) return null;
+
+  // Colon notation (ss / mm:ss / hh:mm:ss).
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':').map((p) => Number(p));
+    if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
+    let seconds = 0;
+    for (const part of parts) seconds = seconds * 60 + part;
+    return Math.round(seconds * 1000);
+  }
+
+  // Plain number → seconds.
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+
+  // Unit notation (1h2m3s, 90s, 2m, …).
+  const unitPattern = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/;
+  const match = unitPattern.exec(trimmed);
+  if (!match || (!match[1] && !match[2] && !match[3])) return null;
+  const hours = Number(match[1] ?? 0);
+  const minutes = Number(match[2] ?? 0);
+  const seconds = Number(match[3] ?? 0);
+  return ((hours * 60 + minutes) * 60 + seconds) * 1000;
+}
+
+/**
+ * Render a textual progress bar for a track, e.g. `▬▬▬🔘▬▬▬▬▬▬`.
+ * `position` and `length` are in milliseconds.
+ */
+export function progressBar(position: number, length: number, size = 18): string {
+  if (length <= 0) return '🔘' + '▬'.repeat(Math.max(0, size - 1));
+  const ratio = clamp(position / length, 0, 1);
+  const knob = Math.min(size - 1, Math.floor(ratio * size));
+  return '▬'.repeat(knob) + '🔘' + '▬'.repeat(Math.max(0, size - knob - 1));
+}

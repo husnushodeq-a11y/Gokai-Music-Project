@@ -54,6 +54,11 @@ export class MusicSession {
   /** Pending auto-leave timer (null when the channel is populated / 24-7). */
   private leaveTimer: NodeJS.Timeout | null = null;
 
+  /** Users who have voted to skip the current track. */
+  public readonly skipVoters = new Set<string>();
+  /** Identifier of the track the current votes apply to (reset on track change). */
+  private voteTrackId: string | null = null;
+
   public constructor(
     public readonly dbId: string,
     public readonly guildId: string,
@@ -197,6 +202,33 @@ export class MusicSession {
       allowed: false,
       reason: 'This session is locked. Only the owner, allowed users or DJs can control it.',
     };
+  }
+
+  // ── Vote-skip bookkeeping ──────────────────────────────────────────────────
+
+  /**
+   * Ensure the skip-vote set corresponds to the track currently playing. When
+   * the track changes (Kazagumo advances the queue) any stale votes are cleared.
+   */
+  public syncSkipVotesToCurrent(): void {
+    const id = this.queue.current?.identifier ?? null;
+    if (id !== this.voteTrackId) {
+      this.voteTrackId = id;
+      this.skipVoters.clear();
+    }
+  }
+
+  /** Register a skip vote for `userId`; returns the resulting vote count. */
+  public addSkipVote(userId: string): number {
+    this.syncSkipVotesToCurrent();
+    this.skipVoters.add(userId);
+    return this.skipVoters.size;
+  }
+
+  /** Clear any accumulated skip votes (called after a successful skip). */
+  public clearSkipVotes(): void {
+    this.skipVoters.clear();
+    this.voteTrackId = this.queue.current?.identifier ?? null;
   }
 
   // ── Voice-channel awareness ────────────────────────────────────────────────
