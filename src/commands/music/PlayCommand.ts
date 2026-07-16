@@ -9,6 +9,7 @@ import type { KazagumoTrack } from 'kazagumo';
 import type { GuildSettings } from '@prisma/client';
 import type { Command, CommandContext, CommandMeta, CommandRequirements } from '@/types';
 import { getGuildSettings } from '@/core/SettingsService';
+import { searchPrefix } from '@/audio/searchSources';
 import type { MusicSession } from '@/core/SessionManager';
 import { requesterId } from '@/core/QueueManager';
 import { formatDuration, truncate } from '@/util/format';
@@ -72,9 +73,14 @@ class PlayCommandImpl implements Command {
       return;
     }
 
-    // 2. Search. Kazagumo transparently handles URLs, playlists and free text.
+    // Load settings up front — the guild's search source routes plain-text
+    // queries (URLs, incl. Spotify links, are passed straight to Lavalink).
+    const settings = await getGuildSettings(message.guildId);
+
+    // 2. Search. Kazagumo transparently handles URLs, playlists and free text;
+    //    for free text we route through the configured source prefix.
     const result = await client.audio
-      .search(query, { requester: message.author })
+      .search(query, { requester: message.author, source: searchPrefix(settings.searchType) })
       .catch(() => null);
 
     if (!result || result.tracks.length === 0) {
@@ -99,7 +105,6 @@ class PlayCommandImpl implements Command {
       return;
     }
 
-    const settings = await getGuildSettings(message.guildId);
     const isPlaylist = result.type === 'PLAYLIST';
 
     // 4. Apply the guild limits (length, queue size, per-user cap, blacklists).

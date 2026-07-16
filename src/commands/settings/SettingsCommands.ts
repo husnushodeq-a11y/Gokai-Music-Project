@@ -4,6 +4,7 @@ import { getGuildSettings, updateGuildSettings, invalidateSettingsCache } from '
 import { isServerAdmin } from '@/util/permissions';
 import { reply, ACCENT } from '@/util/commandHelpers';
 import { clamp, formatDuration, parseTimeToMs } from '@/util/format';
+import { SEARCH_SOURCES, SEARCH_SOURCE_IDS, isSearchSourceId } from '@/audio/searchSources';
 
 /**
  * Server/session settings commands — the granular configuration surface from
@@ -184,13 +185,15 @@ const announceCommand = admin(
 // ── searchtype ────────────────────────────────────────────────────────────────
 
 const searchTypeCommand = admin(
-  { name: 'searchtype', aliases: [], description: 'Set the default track search type', category: 'settings', subCategory: 'Server', usage: 'searchtype <youtube|youtube_music|soundcloud>', examples: ['m!searchtype soundcloud'] },
+  { name: 'searchtype', aliases: [], description: 'Set the default track search type', category: 'settings', subCategory: 'Server', usage: `searchtype <${SEARCH_SOURCE_IDS.join('|')}>`, examples: ['m!searchtype spotify', 'm!searchtype soundcloud'] },
   async (ctx) => {
-    const valid = ['youtube', 'youtube_music', 'soundcloud'];
-    const type = ctx.args[0]?.toLowerCase();
-    if (!type || !valid.includes(type)) return void reply(ctx.message, `⚠️ Choose one of: ${valid.map((v) => `\`${v}\``).join(', ')}.`);
+    const type = ctx.args[0]?.toLowerCase() ?? '';
+    if (!isSearchSourceId(type)) {
+      return void reply(ctx.message, `⚠️ Choose one of: ${SEARCH_SOURCE_IDS.map((v) => `\`${v}\``).join(', ')}.`);
+    }
     await updateGuildSettings(ctx.message.guildId!, { searchType: type });
-    await reply(ctx.message, `🔎 Default search source set to **${type}**.`);
+    const note = SEARCH_SOURCES[type].requiresLavaSrc ? ' *(requires the LavaSrc plugin on your Lavalink node)*' : '';
+    await reply(ctx.message, `🔎 Default search source set to **${SEARCH_SOURCES[type].label}**.${note}`);
   },
 );
 

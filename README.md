@@ -60,6 +60,10 @@ permissions). Each layer only depends on the one below it.
 
 1. `cp .env.example .env` and fill in the values.
 2. Run a **Lavalink v4** node and point `LAVALINK_NODES` at it.
+   - For **Spotify / Apple Music / Deezer**, add the LavaSrc plugin to the node —
+     see [`docs/spotify-setup.md`](docs/spotify-setup.md) and
+     [`lavalink/application.example.yml`](lavalink/application.example.yml).
+     No bot changes are needed; `m!searchtype spotify` routes text search there.
 3. Run PostgreSQL and set `DATABASE_URL`.
 4. Install & migrate:
    ```bash

@@ -1,0 +1,73 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Example Lavalink v4 configuration with Spotify (and Apple Music / Deezer)
+#  support via the LavaSrc plugin.
+#
+#  This file configures the **Lavalink server**, NOT the bot. Copy it to your
+#  Lavalink node as `application.yml`, fill in the Spotify credentials, and
+#  restart Lavalink. The bot needs no changes — Spotify URLs resolve
+#  automatically, and `m!searchtype spotify` routes text searches through it.
+#
+#  Docs: https://github.com/topi314/LavaSrc
+# ─────────────────────────────────────────────────────────────────────────────
+
+server:
+  port: 2333
+  address: 0.0.0.0
+
+lavalink:
+  # Password — must match the `auth` in the bot's LAVALINK_NODES env value.
+  server:
+    password: "youshallnotpass"
+    sources:
+      # LavaSrc supplies spotify/applemusic/deezer; keep them off here so the
+      # plugin owns them. YouTube in v4 is provided by the youtube-plugin below.
+      youtube: false
+      soundcloud: true
+      bandcamp: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+
+  plugins:
+    # YouTube source plugin (Lavalink v4 no longer bundles YouTube).
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.13.0"
+      repository: "https://maven.lavalink.dev/releases"
+    # LavaSrc — Spotify / Apple Music / Deezer / Yandex metadata → mirrored playback.
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.7.3"
+      repository: "https://maven.lavalink.dev/releases"
+
+plugins:
+  youtube:
+    enabled: true
+
+  lavasrc:
+    sources:
+      # Enable the ones you want. Spotify only needs a (free) developer app.
+      spotify: true
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+
+    # How LavaSrc turns a Spotify track into a playable stream. It resolves the
+    # ISRC on YouTube first (most accurate), then falls back to a text search.
+    providers:
+      - "ytsearch:\"%ISRC%\""
+      - "ytsearch:%QUERY%"
+
+    spotify:
+      # Create an app at https://developer.spotify.com/dashboard and paste the
+      # client id / secret here.
+      clientId: "your-spotify-client-id"
+      clientSecret: "your-spotify-client-secret"
+      # Market used for track/playlist lookups.
+      countryCode: "US"
+      # Number of playlist pages to fetch (100 tracks each).
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
+
+    # applemusic:
+    #   countryCode: "US"
+    #   mediaAPIToken: "your-apple-music-token"
+    # deezer:
+    #   masterDecryptionKey: "your-deezer-key"
