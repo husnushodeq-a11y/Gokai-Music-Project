@@ -330,12 +330,9 @@ export class SessionManager {
     private readonly client: Client,
     private readonly audio: Kazagumo,
   ) {
-    // When a queue drains, apply 24/7 / auto-leave semantics.
+    // When a queue drains: try autoplay first, otherwise apply 24/7 / auto-leave.
     this.audio.on(GOKAI_QUEUE_EMPTY as never, (player: KazagumoPlayer) => {
-      const session = this.sessions.get(player.guildId);
-      if (session && session.getPresentUserIds(this.client).size === 0) {
-        session.onChannelEmpty(this.client);
-      }
+      void this.handleQueueEmpty(player);
     });
   }
 
@@ -477,6 +474,48 @@ export class SessionManager {
       }
       if (!player.playing && !player.paused) await player.play();
     }
+  }
+
+  /**
+   * Handle a drained queue: if autoplay is on, try to enqueue a recommendation;
+   * otherwise fall through to the 24/7-aware empty-channel handling.
+   */
+  private async handleQueueEmpty(player: KazagumoPlayer): Promise<void> {
+    const session = this.sessions.get(player.guildId);
+    if (!session) return;
+
+    if (session.autoplay && (await this.tryAutoplay(session))) return;
+
+    if (session.getPresentUserIds(this.client).size === 0) {
+      session.onChannelEmpty(this.client);
+    }
+  }
+
+  /**
+   * Best-effort autoplay: seed a search from the last-played track and enqueue a
+   * fresh, non-identical recommendation. This is a deliberately simple heuristic
+   * (same-artist / related search) that can be swapped for a richer recommender
+   * without touching callers. Returns true when a track was enqueued.
+   */
+  private async tryAutoplay(session: MusicSession): Promise<boolean> {
+    const seed = session.queue.previous ?? session.queue.current;
+    if (!seed) return false;
+
+    const query = seed.author ? `${seed.author} ${seed.title}` : seed.title;
+    const result = await this.audio
+      .search(query, { requester: this.client.user ?? undefined })
+      .catch(() => null);
+    if (!result || result.tracks.length === 0) return false;
+
+    const seedKey = seed.uri ?? seed.identifier;
+    const pick = result.tracks.find((t) => (t.uri ?? t.identifier) !== seedKey) ?? result.tracks[0];
+    if (!pick) return false;
+
+    session.queue.add(pick);
+    if (!session.player.playing && !session.player.paused) {
+      await session.player.play().catch(() => undefined);
+    }
+    return true;
   }
 
   /** Construct a MusicSession runtime object from a durable row + live player. */

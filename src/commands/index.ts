@@ -3,6 +3,7 @@ import { HelpCommand } from '@/commands/help/HelpCommand';
 import { PlayCommand } from '@/commands/music/PlayCommand';
 import { CONTROL_COMMANDS } from '@/commands/music/ControlCommands';
 import { QueueCommand } from '@/commands/queue/QueueCommand';
+import { SESSION_COMMANDS } from '@/commands/session/SessionCommands';
 
 /**
  * Command registry.
@@ -19,7 +20,8 @@ export const ALL_COMMANDS: readonly Command[] = [
   PlayCommand,
   QueueCommand,
   ...CONTROL_COMMANDS,
-  // Further Phase 3+ commands (sessions, collections, settings, …) are added here.
+  ...SESSION_COMMANDS,
+  // Further Phase 3+ commands (collections, profiles, settings, …) are added here.
 ];
 
 /** Populate `client.commands` with names + aliases, guarding against clashes. */
