@@ -4,9 +4,14 @@ A **1:1 functional clone of Jockie Music** for Discord, written in TypeScript wi
 **discord.js v14**. Strictly **prefix-only** (no slash commands), component-driven
 UI, backed by **Lavalink v4** (via Kazagumo/Shoukaku) and **PostgreSQL + Prisma**.
 
-> Status: **Phase 1 (Foundation)** and **Phase 2 (Help System & UI)** are complete.
-> The core command layer (play, queue, sessions, collections, profiles, settings)
-> lands in subsequent phases.
+> Status: Foundation, help system and a broad command layer are implemented —
+> **66 prefix commands** across playback, advanced queue manipulation, session
+> ownership/permissions/24-7, information, audio effects, prefixes, aliases,
+> profiles and granular server settings (with title/author blacklists).
+>
+> Deferred (need external services / large subsystems): Genius lyrics & song
+> info, guess-the-song games, stage-channel & voice-status announcements,
+> per-channel enable/disable, saved Collections, and multi-bot ownership.
 
 ## Architecture
 

@@ -20,6 +20,8 @@ export type CommandCategoryId =
   | 'general'
   | 'music'
   | 'queue'
+  | 'information'
+  | 'filters'
   | 'sessions'
   | 'collections'
   | 'profiles'

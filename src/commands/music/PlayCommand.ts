@@ -6,9 +6,11 @@ import {
   type VoiceBasedChannel,
 } from 'discord.js';
 import type { KazagumoTrack } from 'kazagumo';
+import type { GuildSettings } from '@prisma/client';
 import type { Command, CommandContext, CommandMeta, CommandRequirements } from '@/types';
 import { getGuildSettings } from '@/core/SettingsService';
 import type { MusicSession } from '@/core/SessionManager';
+import { requesterId } from '@/core/QueueManager';
 import { formatDuration, truncate } from '@/util/format';
 
 /**
@@ -100,13 +102,12 @@ class PlayCommandImpl implements Command {
     const settings = await getGuildSettings(message.guildId);
     const isPlaylist = result.type === 'PLAYLIST';
 
-    // 4. Apply the guild limits (max track duration, max queue size).
+    // 4. Apply the guild limits (length, queue size, per-user cap, blacklists).
     const candidates = isPlaylist ? result.tracks : [result.tracks[0]!];
-    const { accepted, rejectedLong, rejectedFull } = applyLimits(session, settings, candidates);
+    const { accepted, notes } = applyLimits(session, settings, candidates, message.author.id);
 
     if (accepted.length === 0) {
-      const reason = rejectedFull > 0 ? 'the queue is full' : 'it exceeds the track length limit';
-      await reply(message, `⚠️ Nothing was added — ${reason}.`);
+      await reply(message, `⚠️ Nothing was added${notes ? ` — ${notes.replace('-# skipped: ', '')}` : '.'}`);
       await this.destroyIfEmpty(session, client);
       return;
     }
@@ -131,8 +132,7 @@ class PlayCommandImpl implements Command {
       accepted,
       wasActive,
       session,
-      rejectedLong,
-      rejectedFull,
+      notes,
     });
   }
 
@@ -145,18 +145,16 @@ class PlayCommandImpl implements Command {
       accepted: KazagumoTrack[];
       wasActive: boolean;
       session: MusicSession;
-      rejectedLong: number;
-      rejectedFull: number;
+      notes: string;
     },
   ): Promise<void> {
-    const { isPlaylist, accepted, wasActive, session } = opts;
+    const { isPlaylist, accepted, wasActive, session, notes } = opts;
 
     // A single track that starts playing immediately is announced by the
     // AudioManager's static "Now Playing" embed — don't duplicate it here.
     if (!isPlaylist && !wasActive) return;
 
     const embed = new EmbedBuilder().setColor(ACCENT);
-    const notes = buildLimitNotes(opts.rejectedLong, opts.rejectedFull);
 
     if (isPlaylist) {
       const totalMs = accepted.reduce((s, t) => s + (t.isStream ? 0 : t.length ?? 0), 0);
@@ -214,54 +212,66 @@ class PlayCommandImpl implements Command {
 /** Outcome of applying guild limits to a set of candidate tracks. */
 interface LimitOutcome {
   accepted: KazagumoTrack[];
-  rejectedLong: number;
-  rejectedFull: number;
+  /** Pre-rendered "N skipped (reason)" note, or '' when nothing was skipped. */
+  notes: string;
 }
 
 /**
- * Filter candidate tracks by the guild's max-duration and max-queue-size limits.
- * Streams bypass the duration limit. A `maxQueueSize`/`maxTrackDuration` of 0
- * means "unlimited".
+ * Filter candidate tracks by every configured guild limit: max/min track length,
+ * max queue size, per-user track cap, and title/author blacklists. A limit of 0
+ * (or an empty blacklist) means "no restriction"; streams bypass length limits.
  */
 function applyLimits(
   session: MusicSession,
-  settings: { maxQueueSize: number; maxTrackDuration: bigint },
+  settings: GuildSettings,
   candidates: KazagumoTrack[],
+  requesterUserId: string,
 ): LimitOutcome {
   const maxDuration = Number(settings.maxTrackDuration);
+  const minDuration = Number(settings.minTrackDuration);
   const maxQueue = settings.maxQueueSize;
+  const maxUser = settings.maxUserTracks;
+  const titles = settings.blacklistedTitles;
+  const authors = settings.blacklistedAuthors;
 
-  // Remaining capacity (unlimited when maxQueue is 0).
-  let remaining =
-    maxQueue > 0 ? Math.max(0, maxQueue - session.queue.totalSize) : Number.POSITIVE_INFINITY;
+  let remaining = maxQueue > 0 ? Math.max(0, maxQueue - session.queue.totalSize) : Number.POSITIVE_INFINITY;
+
+  // How many tracks this user already has queued (for the per-user cap).
+  let userCount =
+    maxUser > 0
+      ? session.queue.upcoming.filter((t) => requesterId(t.requester) === requesterUserId).length
+      : 0;
 
   const accepted: KazagumoTrack[] = [];
-  let rejectedLong = 0;
-  let rejectedFull = 0;
+  const skipped = { long: 0, short: 0, full: 0, blacklisted: 0, userCap: 0 };
 
   for (const track of candidates) {
-    const tooLong = maxDuration > 0 && !track.isStream && (track.length ?? 0) > maxDuration;
-    if (tooLong) {
-      rejectedLong++;
+    const len = track.length ?? 0;
+    const title = track.title.toLowerCase();
+    const author = (track.author ?? '').toLowerCase();
+
+    if (titles.some((t) => title.includes(t)) || authors.some((a) => author.includes(a))) {
+      skipped.blacklisted++;
       continue;
     }
-    if (remaining <= 0) {
-      rejectedFull++;
-      continue;
-    }
+    if (!track.isStream && maxDuration > 0 && len > maxDuration) { skipped.long++; continue; }
+    if (!track.isStream && minDuration > 0 && len < minDuration) { skipped.short++; continue; }
+    if (remaining <= 0) { skipped.full++; continue; }
+    if (maxUser > 0 && userCount >= maxUser) { skipped.userCap++; continue; }
+
     accepted.push(track);
     remaining--;
+    userCount++;
   }
 
-  return { accepted, rejectedLong, rejectedFull };
-}
-
-/** Render a short "some tracks were skipped" note, or empty string if none. */
-function buildLimitNotes(rejectedLong: number, rejectedFull: number): string {
   const parts: string[] = [];
-  if (rejectedLong > 0) parts.push(`${rejectedLong} skipped (too long)`);
-  if (rejectedFull > 0) parts.push(`${rejectedFull} skipped (queue full)`);
-  return parts.length ? `-# ${parts.join(' • ')}` : '';
+  if (skipped.long) parts.push(`${skipped.long} too long`);
+  if (skipped.short) parts.push(`${skipped.short} too short`);
+  if (skipped.full) parts.push(`${skipped.full} queue full`);
+  if (skipped.userCap) parts.push(`${skipped.userCap} over your limit`);
+  if (skipped.blacklisted) parts.push(`${skipped.blacklisted} blacklisted`);
+
+  return { accepted, notes: parts.length ? `-# skipped: ${parts.join(' • ')}` : '' };
 }
 
 /** Ensure the bot has Connect (+ Speak, unless it's a stage) in the channel. */

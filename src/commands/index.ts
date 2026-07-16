@@ -3,7 +3,14 @@ import { HelpCommand } from '@/commands/help/HelpCommand';
 import { PlayCommand } from '@/commands/music/PlayCommand';
 import { CONTROL_COMMANDS } from '@/commands/music/ControlCommands';
 import { QueueCommand } from '@/commands/queue/QueueCommand';
+import { QUEUE_STATE_COMMANDS } from '@/commands/queue/QueueStateCommands';
+import { INFO_COMMANDS } from '@/commands/info/InfoCommands';
+import { FILTER_COMMANDS } from '@/commands/filters/FilterCommands';
 import { SESSION_COMMANDS } from '@/commands/session/SessionCommands';
+import { PERMISSION_COMMANDS } from '@/commands/session/PermissionCommands';
+import { CONFIG_COMMANDS } from '@/commands/config/ConfigCommands';
+import { SETTINGS_COMMANDS } from '@/commands/settings/SettingsCommands';
+import { PROFILE_COMMANDS } from '@/commands/profile/ProfileCommands';
 
 /**
  * Command registry.
@@ -20,8 +27,15 @@ export const ALL_COMMANDS: readonly Command[] = [
   PlayCommand,
   QueueCommand,
   ...CONTROL_COMMANDS,
+  ...QUEUE_STATE_COMMANDS,
+  ...INFO_COMMANDS,
+  ...FILTER_COMMANDS,
   ...SESSION_COMMANDS,
-  // Further Phase 3+ commands (collections, profiles, settings, …) are added here.
+  ...PERMISSION_COMMANDS,
+  ...CONFIG_COMMANDS,
+  ...SETTINGS_COMMANDS,
+  ...PROFILE_COMMANDS,
+  // Collections layer (save/load/share/…) is the remaining major group.
 ];
 
 /** Populate `client.commands` with names + aliases, guarding against clashes. */

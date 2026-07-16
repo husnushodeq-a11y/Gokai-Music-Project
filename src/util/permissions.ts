@@ -14,6 +14,11 @@ export function isBotOwner(userId: string): boolean {
   return config.ownerIds.includes(userId);
 }
 
+/** Whether a member may change server-wide configuration (settings/prefix/aliases). */
+export function isServerAdmin(member: GuildMember): boolean {
+  return isBotOwner(member.id) || member.permissions.has(PermissionFlagsBits.ManageGuild);
+}
+
 /**
  * Whether a member counts as a "DJ" for the guild:
  *   - bot owner, or

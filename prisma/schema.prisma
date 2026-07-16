@@ -55,8 +55,26 @@ model GuildSettings {
   /// Maximum permitted track duration in milliseconds. 0 = unlimited.
   maxTrackDuration BigInt @default(0)
 
+  /// Minimum permitted track duration in milliseconds. 0 = no minimum.
+  minTrackDuration BigInt @default(0)
+
+  /// Max tracks a single user may have queued at once. 0 = unlimited.
+  maxUserTracks Int @default(0)
+
+  /// Whether vote-skip is enabled at all (when false, any controller skips).
+  voteSkipEnabled Boolean @default(true)
+
   /// Percentage of listeners that must vote to skip (1–100).
   voteSkipPercentage Int @default(50)
+
+  /// Blacklisted track titles — matching tracks are refused at enqueue time.
+  blacklistedTitles String[] @default([])
+
+  /// Blacklisted authors/artists — matching tracks are refused at enqueue time.
+  blacklistedAuthors String[] @default([])
+
+  /// Default track search source (youtube, youtube_music, soundcloud, …).
+  searchType String @default("youtube")
 
   /// Optional DJ role snowflake — members with this role bypass vote-skip etc.
   djRoleId String?
@@ -123,6 +141,12 @@ model UserProfile {
 
   /// Named theme preset used to render the profile card.
   theme String @default("default")
+
+  /// Profile visibility: "public" or "private".
+  visibility String @default("public")
+
+  /// Avatar shape preset: "circle" or "square".
+  avatarShape String @default("circle")
 
   /// Aggregate listening statistics.
   tracksPlayed  Int    @default(0)
