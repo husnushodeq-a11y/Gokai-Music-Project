@@ -1,0 +1,274 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  Gokai Music — Prisma schema
+//
+//  All complex, persistent state for the bot lives here. Ephemeral runtime state
+//  (the live audio player, the in-memory queue array, active component collectors)
+//  is kept in the process; anything that must survive a restart — settings,
+//  ownership, 24/7 sessions, saved collections, profiles, aliases, blacklists —
+//  is modelled below.
+//
+//  Target datastore: PostgreSQL (native String[] arrays + Json columns).
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+/// The repeat/loop behaviour of a session's queue.
+enum LoopMode {
+  NONE
+  TRACK
+  QUEUE
+}
+
+/// Scope of a blacklist entry. GLOBAL applies everywhere; GUILD bans a guild from
+/// using the bot; USER bans a specific user (optionally scoped to one guild).
+enum BlacklistScope {
+  GLOBAL
+  GUILD
+  USER
+}
+
+// ── Per-guild configuration ──────────────────────────────────────────────────
+
+/// Server-wide defaults & granular settings. One row per guild.
+model GuildSettings {
+  /// Discord guild (server) snowflake — primary key.
+  guildId String @id
+
+  /// Custom server prefix. Resolution order at runtime is User → Server → Default.
+  prefix String?
+
+  /// Default volume applied to a brand-new session (0–200).
+  defaultVolume Int @default(100)
+
+  /// Hard cap on how many tracks a single session queue may hold. 0 = unlimited.
+  maxQueueSize Int @default(1000)
+
+  /// Maximum permitted track duration in milliseconds. 0 = unlimited.
+  maxTrackDuration BigInt @default(0)
+
+  /// Percentage of listeners that must vote to skip (1–100).
+  voteSkipPercentage Int @default(50)
+
+  /// Optional DJ role snowflake — members with this role bypass vote-skip etc.
+  djRoleId String?
+
+  /// If true, only DJs/owner may run "destructive" queue commands.
+  djOnly Boolean @default(false)
+
+  /// Template used to render the "Now Playing" announcement. Supports the
+  /// placeholders {title} {author} {duration} {requester} {url}.
+  announceTemplate String @default("Now playing **{title}** by **{author}**")
+
+  /// Whether newly created sessions default to 24/7 (persistent) mode.
+  default247 Boolean @default(false)
+
+  /// Whether newly created sessions default to autoplay/recommendations on.
+  defaultAutoplay Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("guild_settings")
+}
+
+// ── Per-user configuration & identity ────────────────────────────────────────
+
+/// User-level preferences. One row per user, global across all guilds.
+model UserSettings {
+  /// Discord user snowflake — primary key.
+  userId String @id
+
+  /// Personal prefix override — highest priority in prefix resolution.
+  prefix String?
+
+  /// BCP-47 locale used for localised responses (future-proofing).
+  locale String @default("en-US")
+
+  /// Preferred default volume when this user starts a session.
+  preferredVolume Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
+}
+
+/// Highly customizable public profile surfaced by the `profile` command.
+model UserProfile {
+  userId String @id
+
+  /// Freeform display name shown on the profile card.
+  displayName String?
+
+  /// Short "about me" biography.
+  bio String?
+
+  /// A favourite track the user pins to their profile (as a share/URL string).
+  favoriteTrack String?
+
+  /// Accent colour for the embed, stored as a hex string e.g. "#5865F2".
+  accentColor String @default("#5865F2")
+
+  /// Cosmetic badges the user has unlocked/earned.
+  badges String[] @default([])
+
+  /// Named theme preset used to render the profile card.
+  theme String @default("default")
+
+  /// Aggregate listening statistics.
+  tracksPlayed  Int    @default(0)
+  msListened    BigInt @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+// ── Sessions ─────────────────────────────────────────────────────────────────
+
+/// A persisted music session. Runtime state (player, live queue) is in-memory;
+/// this row is the durable projection used for 24/7 restore, ownership and
+/// permission bookkeeping. Multi-session: a guild may host several sessions,
+/// uniquely keyed by their voice channel.
+model Session {
+  id String @id @default(cuid())
+
+  guildId        String
+  voiceChannelId String
+  textChannelId  String
+
+  /// The current owner (claimer) of the session. Null = unclaimed/open.
+  ownerId String?
+
+  /// 24/7 mode — when true the bot stays connected even when the channel empties
+  /// and the session/queue is restored on startup.
+  mode247 Boolean @default(false)
+
+  /// Autoplay recommendations when the queue runs dry.
+  autoplay Boolean @default(false)
+
+  /// Session-scoped volume (0–200).
+  volume Int @default(100)
+
+  /// Repeat mode of the queue.
+  loopMode LoopMode @default(NONE)
+
+  /// When locked, only the owner + allowed users may control playback.
+  locked Boolean @default(false)
+
+  /// Explicit allow-list (userIds) — always permitted, even when locked.
+  allowedUsers String[] @default([])
+
+  /// Explicit deny-list (userIds) — never permitted to control the session.
+  deniedUsers String[] @default([])
+
+  /// Serialized queue snapshot ([]KazagumoTrack-ish) for 24/7 restore.
+  queueSnapshot Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One live session per voice channel; fast lookups by guild.
+  @@unique([guildId, voiceChannelId])
+  @@index([guildId])
+  @@map("sessions")
+}
+
+// ── Collections (saved playlists) ────────────────────────────────────────────
+
+/// A user-owned, reusable playlist. Shareable via a short human-friendly code.
+model Collection {
+  id String @id @default(cuid())
+
+  /// Owning user snowflake.
+  ownerId String
+
+  /// Human name, unique per owner.
+  name String
+
+  description String?
+
+  /// Short, unique, shareable code e.g. "GK-8F3A". Anyone with the code can load.
+  shareCode String @unique
+
+  /// Whether the collection is publicly loadable via its code.
+  isPublic Boolean @default(true)
+
+  /// Ordered array of track descriptors (title, author, uri, length, …).
+  tracks Json @default("[]")
+
+  /// How many times the collection has been loaded/played (popularity metric).
+  plays Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+  @@map("collections")
+}
+
+// ── Command aliases ──────────────────────────────────────────────────────────
+
+/// Per-guild custom command aliases (e.g. "p" → "play"). Resolved by the
+/// messageCreate middleware after prefix stripping.
+model CommandAlias {
+  id String @id @default(cuid())
+
+  guildId String
+
+  /// The alias token the user types (without prefix).
+  alias String
+
+  /// The canonical command name it expands to.
+  command String
+
+  /// Optional canned arguments appended after the command.
+  arguments String?
+
+  createdBy String
+
+  createdAt DateTime @default(now())
+
+  @@unique([guildId, alias])
+  @@index([guildId])
+  @@map("command_aliases")
+}
+
+// ── Blacklists ───────────────────────────────────────────────────────────────
+
+/// Blacklist entries gate access at the messageCreate middleware layer.
+model Blacklist {
+  id String @id @default(cuid())
+
+  scope BlacklistScope
+
+  /// The snowflake being blacklisted (user id or guild id depending on scope).
+  targetId String
+
+  /// For USER-scoped bans, optionally restrict the ban to a single guild.
+  guildId String?
+
+  reason String?
+
+  createdBy String
+
+  /// Optional expiry — null means permanent.
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([scope, targetId, guildId])
+  @@index([targetId])
+  @@map("blacklists")
+}
