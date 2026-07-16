@@ -1,5 +1,6 @@
 import type { Command, GokaiClient } from '@/types';
 import { HelpCommand } from '@/commands/help/HelpCommand';
+import { PlayCommand } from '@/commands/music/PlayCommand';
 
 /**
  * Command registry.
@@ -13,7 +14,8 @@ import { HelpCommand } from '@/commands/help/HelpCommand';
 /** Every command the bot exposes. New commands are appended here. */
 export const ALL_COMMANDS: readonly Command[] = [
   HelpCommand,
-  // Phase 3+ commands (play, queue, settings, …) are registered here as they land.
+  PlayCommand,
+  // Further Phase 3+ commands (queue, sessions, settings, …) are added here.
 ];
 
 /** Populate `client.commands` with names + aliases, guarding against clashes. */
