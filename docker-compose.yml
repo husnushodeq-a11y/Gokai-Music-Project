@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Gokai Music — full stack (bot + PostgreSQL + Lavalink v4)
+#
+#  Usage:
+#    cp .env.docker.example .env      # then fill in the secrets
+#    docker compose up -d --build
+#
+#  Only the bot talks to the internet outbound; Postgres and Lavalink are kept
+#  on the internal Docker network and are NOT published to the host.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gokai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: gokai_music
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U gokai -d gokai_music']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    restart: unless-stopped
+    environment:
+      # Spring relaxed-binding overrides for application.yml:
+      _JAVA_OPTIONS: -Xmx${LAVALINK_HEAP:-1G}
+      SERVER_PORT: 2333
+      LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD}
+    volumes:
+      # Your Lavalink config (copy from lavalink/application.example.yml).
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      # Persist downloaded plugins (LavaSrc, youtube-plugin) between restarts.
+      - lavalink-plugins:/opt/Lavalink/plugins
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavalink:
+        # Shoukaku reconnects automatically, so we only need Lavalink started.
+        condition: service_started
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DEFAULT_PREFIX: ${DEFAULT_PREFIX:-m!}
+      BOT_OWNER_IDS: ${BOT_OWNER_IDS}
+      DATABASE_URL: postgresql://gokai:${POSTGRES_PASSWORD}@postgres:5432/gokai_music?schema=public
+      LAVALINK_NODES: '[{"name":"main","url":"lavalink:2333","auth":"${LAVALINK_PASSWORD}","secure":false}]'
+
+volumes:
+  pgdata:
+  lavalink-plugins:

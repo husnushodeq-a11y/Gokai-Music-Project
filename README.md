@@ -74,6 +74,20 @@ permissions). Each layer only depends on the one below it.
    ```
    For development: `npm run dev`.
 
+## Deploying to a server
+
+The quickest path is **Docker Compose** (bot + PostgreSQL + Lavalink in one
+command):
+
+```bash
+cp .env.docker.example .env                               # fill in secrets
+cp lavalink/application.example.yml lavalink/application.yml
+docker compose up -d --build
+```
+
+Full VPS instructions (Docker **and** bare-metal systemd/PM2), updates, backups
+and troubleshooting are in [`docs/deployment.md`](docs/deployment.md).
+
 ## Requirements
 
 - Node.js ≥ 18.17
