@@ -15,6 +15,11 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
+    "deploy": "npm ci && npx prisma db push && npm run build && pm2 startOrReload ecosystem.config.js && pm2 save",
+    "pm2:start": "pm2 start ecosystem.config.js && pm2 save",
+    "pm2:restart": "pm2 restart gokai-music",
+    "pm2:stop": "pm2 stop gokai-music",
+    "pm2:logs": "pm2 logs gokai-music",
     "postinstall": "prisma generate",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"

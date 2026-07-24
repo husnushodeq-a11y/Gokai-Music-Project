@@ -142,19 +142,28 @@ npm ci
 npx prisma db push          # create the tables
 npm run build
 
-# Run under PM2 (auto-restart + boot persistence):
-pm2 start dist/index.js --name gokai-music
-pm2 save
+# Run under PM2 using the committed ecosystem file (fork mode, 1 instance —
+# never cluster a Discord bot). Secrets are read from ./.env by the app.
+pm2 start ecosystem.config.js
+pm2 save                    # persist the process list
 pm2 startup                 # run the command it prints, to survive reboots
 ```
 
 ### Day-2 operations
 ```bash
-pm2 logs gokai-music
-pm2 restart gokai-music
+npm run pm2:logs            # or: pm2 logs gokai-music
+npm run pm2:restart
+pm2 status
 
-# Update:
-git pull && npm ci && npx prisma db push && npm run build && pm2 restart gokai-music
+# Update to the latest code + schema + build + zero-downtime reload:
+git pull && npm run deploy  # ci → prisma db push → build → startOrReload → save
+```
+
+### (Optional) run Lavalink under PM2 too
+If you'd rather not use systemd for Lavalink, PM2 can supervise the jar:
+```bash
+pm2 start java --name lavalink --cwd /opt/lavalink -- -Xmx1G -jar Lavalink.jar
+pm2 save
 ```
 
 ---
